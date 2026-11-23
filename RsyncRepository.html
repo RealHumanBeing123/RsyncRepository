@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RsyncRepository (offline)</title>
+<style>
+  :root {
+    --bg: #f6f7f8; --card: #ffffff; --text: #1d2125; --muted: #5d6670;
+    --line: #dadfe4; --accent: #1d6fb8; --accent-dark: #0f4f8a; --on-accent: #ffffff;
+    --code-bg: #14181c; --code-text: #e6efe9; --warn-bg: #fff6df; --warn-text: #7a5200;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121416; --card: #1b1e21; --text: #e6e9ec; --muted: #9aa3ab;
+      --line: #2c3237; --accent: #60a5fa; --accent-dark: #93c5fd; --on-accent: #0b0b0b;
+      --code-bg: #0b0d0f; --code-text: #e6efe9; --warn-bg: #3a2f12; --warn-text: #f1cf86;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+           background: var(--accent); color: var(--on-accent); vertical-align: middle; margin-left: 8px; }
+  .out { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 8px 0 12px; }
+  pre#out { margin: 0; padding: 14px 16px; background: var(--code-bg); color: var(--code-text);
+            border-radius: 8px; overflow: auto; max-height: 34vh; white-space: pre-wrap; word-break: break-all;
+            font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-height: 52px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; align-items: center; }
+  button { font: inherit; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--accent);
+           background: var(--accent); color: var(--on-accent); cursor: pointer; }
+  button:hover { background: var(--accent-dark); }
+  button.secondary { background: transparent; color: var(--accent-dark); }
+  button.secondary:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .bar label, .top label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .warn { background: var(--warn-bg); color: var(--warn-text); border-radius: 6px;
+          padding: 8px 12px; margin-top: 8px; font-size: 13px; }
+  .warn ul { margin: 0; padding-left: 18px; }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 16px; margin: 4px 0 12px; }
+  summary { cursor: pointer; font-weight: 600; color: var(--accent-dark); }
+  table#exp { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  table#exp td { padding: 5px 8px 5px 0; vertical-align: top; border-top: 1px solid var(--line); }
+  table#exp td:first-child { width: 46%; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+  .top { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 4px 0 0; }
+  fieldset { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+             margin: 16px 0; padding: 4px 16px 8px; }
+  fieldset[hidden] { display: none; }
+  legend { font-weight: 600; padding: 0 8px; color: var(--accent-dark); }
+  .row { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 6px 16px; padding: 10px 0;
+         border-bottom: 1px solid var(--line); align-items: start; }
+  .row[hidden] { display: none; }
+  .row:last-child { border-bottom: 0; }
+  .row > .lbl { font-weight: 600; padding-top: 6px; }
+  .help { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  input[type=text], select, textarea { width: 100%; max-width: 620px; font: inherit; padding: 6px 8px;
+      border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; resize: vertical; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible
+      { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input[type=checkbox] { width: 18px; height: 18px; margin-top: 7px; }
+  select { width: auto; max-width: 100%; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+  @media (max-width: 640px) { .row { grid-template-columns: minmax(0, 1fr); } .row > .lbl { padding-top: 0; }
+                              table#exp td:first-child { width: auto; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>RsyncRepository <span class="badge">offline</span></h1>
+  <p class="sub">Pick your options and get a ready-to-run <code>rsync</code> command, with a plain-English explanation of every part. Nothing is sent anywhere: this page makes no network requests.</p>
+
+  <div class="out">
+    <pre id="out" aria-live="polite"></pre>
+    <div class="bar">
+      <button id="copy" type="button">Copy command</button>
+      <button id="save" type="button" class="secondary">Save as script</button>
+      <label>Shell
+        <select id="shell">
+          <option value="posix">bash / zsh / sh</option>
+          <option value="ps">PowerShell</option>
+          <option value="cmd">Windows cmd</option>
+        </select>
+      </label>
+      <label>Flags
+        <select id="syntax">
+          <option value="short">Short (-x)</option>
+          <option value="long">Long (--example)</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="multiline" style="margin:0"> Multi-line</label>
+    </div>
+    <div id="warns" class="warn" hidden></div>
+  </div>
+
+  <details id="explain" open>
+    <summary>What each part does</summary>
+    <table id="exp"></table>
+  </details>
+
+  <div class="top">
+    <label>Quick start
+      <select id="preset"><option value="">Choose a recipe...</option></select>
+    </label>
+    <button id="reset" type="button" class="secondary">Reset all</button>
+  </div>
+
+  <div id="form"></div>
+
+  <footer>This builds a suggested command; it doesn't run anything. Use it as a starting point and edit before running, and do a dry run first, especially when deleting. Rsync is a Unix tool; on Windows it needs WSL, Git Bash or cwRsync. Less common options (daemon config, batch files, fuzzy matching, checksum choices, fine-grained filters) are left out; see <code>man rsync</code>.</footer>
+</main>
+
+<script>
+"use strict";
+
+// ---- field constructors --------------------------------------------------
+function F(id, label, o) { var f = { id: id, label: label }; if (o) for (var k in o) f[k] = o[k]; return f; }
+function T(id, label, o) { return F(id, label, o); }
+function A(id, label, o) { o = o || {}; o.type = "area"; return F(id, label, o); }
+function C(id, label, o) { o = o || {}; o.type = "check"; return F(id, label, o); }
+function S(id, label, opts, o) { o = o || {}; o.type = "select"; o.opts = opts; return F(id, label, o); }
+function sec(title, show, fields) { return { title: title, show: show, fields: fields }; }
+function at() { return { on: "cmd", is: [].slice.call(arguments) }; }
+function when(id) { return { on: id, is: [].slice.call(arguments, 1) }; }
+function range(vals, label) { return vals.map(function (v) { return [String(v), label ? label(v) : String(v)]; }); }
+
+// ---- visibility / defaults ----------------------------------------------
+function cond(c, s) {
+  if (!c) return true;
+  if (Array.isArray(c)) return c.every(function (x) { return cond(x, s); });
+  var v = s[c.on];
+  if (c.is) return c.is.indexOf(v) > -1;
+  if (c.not) return c.not.indexOf(v) === -1;
+  return true;
+}
+function visible(f, s) { return cond(f.sec && f.sec.show, s) && cond(f.show, s); }
+function allFields() {
+  var out = [];
+  SECTIONS.forEach(function (sc) { sc.fields.forEach(function (f) { f.sec = sc; out.push(f); }); });
+  return out;
+}
+function defOf(f) {
+  if (f.def !== undefined) return f.def;
+  if (f.type === "check") return false;
+  if (f.type === "select") return f.opts[0][0];
+  return "";
+}
+function defaults() {
+  var s = { syntax: "short", shell: "posix" };
+  allFields().forEach(function (f) { s[f.id] = defOf(f); });
+  return s;
+}
+
+// ---- quoting -------------------------------------------------------------
+function safeRe(shell) {
+  return shell === "posix" ? /^[A-Za-z0-9_@%+=:,.\/-]+$/ : /^[A-Za-z0-9_@%+=:,.\/\\-]+$/;
+}
+function quoteWhole(s, shell) {
+  if (s === "") return shell === "cmd" ? '""' : "''";
+  if (safeRe(shell).test(s)) return s;
+  if (/^[A-Za-z0-9_@%+=:,.\/\\-][A-Za-z0-9_@%+=:,.\/\\~-]*$/.test(s) && (shell !== "posix" || s.indexOf("\\") < 0)) return s; // ~ is only special at the start of a word
+  if (shell === "cmd") return '"' + s.replace(/"/g, '\\"') + '"';
+  return "'" + s.replace(/'/g, shell === "posix" ? "'\\''" : "''") + "'";
+}
+function quote(s, shell) {
+  if (/^-[A-Za-z#]+$/.test(s)) return s;
+  var m = /^(--?[A-Za-z][A-Za-z0-9-]*=)([\s\S]+)$/.exec(s);
+  if (m) return m[1] + quoteWhole(m[2], shell);
+  if (shell !== "cmd" && /^~(\/|$)/.test(s)) { // keep a leading ~ so the shell can expand it
+    var rest = s.slice(2);
+    return rest === "" ? s : "~/" + quoteWhole(rest, shell);
+  }
+  return quoteWhole(s, shell);
+}
+function lines(str) {
+  return (str || "").split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+}
+// Split a typed command like:  bash -c 'echo hi'  into separate arguments.
+function splitArgs(str) {
+  var out = [], cur = "", q = "", has = false, i, c, n;
+  str = str || "";
+  for (i = 0; i < str.length; i++) {
+    c = str.charAt(i);
+    if (q) {
+      n = str.charAt(i + 1);
+      if (c === q) q = "";
+      else if (q === '"' && c === "\\" && (n === '"' || n === "\\")) { cur += n; i++; }
+      else cur += c;
+    } else if (c === "'" || c === '"') { q = c; has = true; }
+    else if (/\s/.test(c)) { if (cur !== "" || has) { out.push(cur); cur = ""; has = false; } }
+    else cur += c;
+  }
+  if (cur !== "" || has) out.push(cur);
+  return out;
+}
+
+// ---- command builder helper ---------------------------------------------
+// Each group is {t:[tokens], d:"description", h:true if it stays on the first line, m:true if mergeable like -a -v -> -av}
+function Builder(s) {
+  var L = s.syntax === "long", self = { g: [], w: [], L: L };
+  self.add = function (d, t, o) {
+    var x = { t: t, d: d };
+    if (o) for (var k in o) x[k] = o[k];
+    self.g.push(x);
+    return x;
+  };
+  self.head = function (d, t) { return self.add(d, t, { h: true }); };
+  self.flag = function (sh, lg, d) {
+    var t = L ? (lg || sh) : sh, x = self.add(d, [t]);
+    if (!L && /^-[A-Za-z]$/.test(t)) x.m = true;
+    return x;
+  };
+  self.val = function (sh, lg, v, d) { return self.add(d, [L ? (lg || sh) : sh, v]); };
+  self.opt = function (name, d) { return self.add(d, ["--" + name]); };
+  self.eq = function (name, v, d) { return self.add(d, ["--" + name + "=" + v]); };
+  self.kv = function (name, v, d) { return self.add(d, ["--" + name, v]); };
+  self.warn = function (m) { self.w.push(m); };
+  return self;
+}
+
+// ---- formatting ----------------------------------------------------------
+function tokensText(g, shell) { return g.t.map(function (t) { return quote(t, shell); }).join(" "); }
+
+function flatten(groups, shell, merge) {
+  var out = [], ci = -1, letters = "";
+  groups.forEach(function (g) {
+    if (merge && g.m && g.t.length === 1) {
+      if (ci < 0) { ci = out.length; out.push({ s: "", h: false }); }
+      letters += g.t[0].charAt(1);
+    } else out.push({ s: tokensText(g, shell), h: !!g.h });
+  });
+  if (ci >= 0) out[ci].s = "-" + letters;
+  return out;
+}
+
+function formatCommand(groups, shell, multiline, merge) {
+  var parts = flatten(groups, shell, merge), head = [APP.cmd], i = 0;
+  while (i < parts.length && parts[i].h) head.push(parts[i++].s);
+  var rest = parts.slice(i).map(function (p) { return p.s; });
+  if (!multiline) return head.concat(rest).join(" ");
+  var cont = shell === "posix" ? " \\" : (shell === "ps" ? " `" : " ^");
+  return [head.join(" ")].concat(rest).join(cont + "\n  ");
+}
+
+function shellWarnings(groups, shell, s) {
+  var toks = [], out = [];
+  groups.forEach(function (g) { g.t.forEach(function (t) { toks.push(t); }); });
+  if (shell === "ps" && toks.some(function (t) { return t.indexOf('"') > -1; }))
+    out.push("Windows PowerShell 5.1 can strip double quotes from arguments passed to other programs (PowerShell 7.3+ is fine). If a value contains double quotes, use PowerShell 7 or avoid them.");
+  if (shell === "cmd") {
+    if (toks.some(function (t) { return /[\r\n]/.test(t); })) out.push("cmd can't pass line breaks inside an argument. Keep each value on one line.");
+    if (toks.some(function (t) { return t.indexOf("%") > -1; })) out.push("Inside a .bat file, each % must be doubled (%%). At the interactive prompt, leave it as is.");
+  }
+  if (APP.shellWarn) out = out.concat(APP.shellWarn(toks, shell, s) || []);
+  return out;
+}
+
+
+var APP = { cmd: "rsync", file: "rsync-command", run: "Run rsync" };
+
+var SECTIONS = [
+  sec("Source and destination", null, [
+    A("src", "Source(s)", { ph: "/home/me/photos/\nuser@host:/srv/data/", help: "One per line. A trailing slash copies the folder's contents; no slash copies the folder itself, name included." }),
+    T("dest", "Destination", { ph: "/mnt/backup/photos/ or user@host:/backups/", help: "A local folder or user@host:/path. Rsync needs at least one side to be local." }),
+    S("goal", "Goal", [["copy", "Copy new and changed files"], ["mirror", "Make the destination an exact mirror (deletes extras)"],
+      ["backup", "Backup that keeps the old versions of changed files"], ["move", "Move: delete source files after copying"], ["compare", "Preview only: show what would change"]],
+      { help: "Sets sensible switches for you. You can still adjust everything below." })
+  ]),
+
+  sec("What to preserve", null, [
+    S("mode", "Archive level", [["a", "Archive: recursive, permissions, times, symlinks, owner (-a)"], ["r", "Plain recursive (-r)"], ["none", "Single files only, nothing preserved"]]),
+    C("hardlinks", "Keep hard links (-H)"),
+    C("acls", "Keep ACLs (-A)"),
+    C("xattrs", "Keep extended attributes (-X)"),
+    C("noOwner", "Don't preserve owner and group", { help: "Useful when copying to FAT/exFAT drives or between systems with different users.", show: when("mode", "a") }),
+    C("noPerms", "Don't preserve permissions", { show: when("mode", "a") }),
+    C("noTimes", "Don't preserve modification times", { show: when("mode", "a") }),
+    C("chmodSet", "Set permissions on the copy", { help: "Applies the chmod value below." }),
+    T("chmod", "Permissions", { ph: "D755,F644", show: when("chmodSet", true), help: "D for folders, F for files. Example: D755,F644." }),
+    C("sparse", "Handle sparse files efficiently (-S)"),
+    C("copyLinks", "Copy what symlinks point to (-L)", { help: "Stores real files instead of links." }),
+    C("safeLinks", "Skip symlinks that point outside the copy", { help: "Avoids links that would be broken or unsafe at the destination." })
+  ]),
+
+  sec("Updating files", null, [
+    S("update", "When a file already exists", [["", "Replace if size or time differs (default)"], ["u", "Skip files that are newer on the destination (-u)"],
+      ["checksum", "Compare contents by checksum (-c, slower, more certain)"], ["sizeonly", "Compare size only"], ["ignoreExisting", "Never touch files that already exist"],
+      ["existing", "Update only files that already exist (skip new ones)"]]),
+    C("inplace", "Update files in place", { help: "Writes into the existing file instead of a temp copy. Saves space but isn't safe if the transfer breaks." }),
+    C("append", "Append to files that grew", { help: "Good for growing log files. Assumes existing bytes match." }),
+    C("whole", "Copy whole files, skip the delta algorithm (-W)", { help: "Faster on fast local disks and networks." }),
+    C("partial", "Keep partly transferred files", { help: "Lets an interrupted transfer resume instead of starting over." }),
+    C("partialProgress", "Keep partial files and show progress (-P)", { help: "Same as partial plus a progress display." }),
+    C("modWindow", "Ignore tiny time differences", { help: "Handy for FAT drives, whose clocks are 2 seconds coarse." }),
+    S("maxSize", "Skip files larger than", [["", "No limit"], ["10M", "10 MB"], ["100M", "100 MB"], ["1G", "1 GB"], ["10G", "10 GB"]]),
+    S("minSize", "Skip files smaller than", [["", "No limit"], ["1K", "1 KB"], ["100K", "100 KB"], ["1M", "1 MB"]])
+  ]),
+
+  sec("Deleting and backups", null, [
+    S("delete", "Extra files on the destination", [["", "Keep them (default)"], ["delete", "Delete them (--delete)"], ["before", "Delete before transferring (--delete-before)"],
+      ["after", "Delete after transferring (--delete-after)"], ["excluded", "Delete them, including excluded files (--delete-excluded)"]],
+      { help: "Deleting makes the destination an exact copy of the source." }),
+    C("maxDeleteOn", "Stop if too many files would be deleted"),
+    S("maxDelete", "Limit", range([5, 10, 50, 100, 1000], function (v) { return "At most " + v + " deletions"; }), { show: when("maxDeleteOn", true), help: "A safety net against pointing at the wrong folder." }),
+    C("removeSource", "Delete source files after they're copied", { help: "Turns the copy into a move." }),
+    C("backup", "Keep a backup of replaced or deleted files"),
+    T("backupDir", "Backup folder", { ph: "../old-versions", show: when("backup", true), help: "Relative paths are inside the destination. Without it, backups get a ~ suffix next to the originals." }),
+    T("backupSuffix", "Backup suffix", { ph: "~", show: when("backup", true) }),
+    C("ignoreErrors", "Delete even if there were errors"),
+    C("force", "Allow deleting non-empty folders in the way")
+  ]),
+
+  sec("Filters", null, [
+    A("exclude", "Exclude", { ph: "*.tmp\nnode_modules/\n.git/", help: "One pattern per line. A trailing slash matches folders. Excludes are checked in the order shown, before includes." }),
+    A("include", "Include (exceptions)", { ph: "*.jpg", help: "Files to keep despite an exclude. To copy only certain files, include them and add *: below." }),
+    C("onlyInclude", "Exclude everything else", { help: "Adds --exclude='*' last, so only the includes above are copied (folders are included so it can look inside)." }),
+    T("excludeFrom", "Exclude patterns from a file", { ph: "exclude.txt" }),
+    T("includeFrom", "Include patterns from a file", { ph: "include.txt" }),
+    T("filesFrom", "Copy only the files listed in this file", { ph: "files.txt", help: "One path per line, relative to the source." }),
+    C("cvs", "Skip common version-control files (-C)", { help: "Ignores .git, .svn, *.o, *~ and similar." }),
+    C("oneFs", "Stay on one filesystem (-x)", { help: "Doesn't cross into other mounted drives." })
+  ]),
+
+  sec("Remote and network", null, [
+    S("transport", "Connection", [["", "Whatever the paths use (SSH for user@host:)"], ["ssh", "SSH with options..."], ["daemon", "Rsync daemon (rsync://)"]]),
+    T("sshPort", "SSH port", { ph: "2222", show: when("transport", "ssh") }),
+    T("sshKey", "SSH key file", { ph: "~/.ssh/id_ed25519", show: when("transport", "ssh") }),
+    T("sshUser", "SSH options (extra)", { ph: "-o StrictHostKeyChecking=accept-new", show: when("transport", "ssh"), help: "Any other options passed to ssh, typed as you would on the command line." }),
+    T("remoteRsync", "Path to rsync on the remote side", { ph: "/usr/local/bin/rsync", help: "Only needed if rsync isn't on the remote PATH." }),
+    T("rsyncPath", "Run remote rsync with sudo", { ph: "sudo rsync", help: "Handy for files you can only read as root there. Leave empty normally." }),
+    C("compress", "Compress during transfer (-z)", { help: "Helps on slow links. Slows down fast networks and already-compressed files." }),
+    S("compressLevel", "Compression level", [["", "Default"], ["1", "Fast (1)"], ["3", "3"], ["6", "6"], ["9", "Smallest (9)"]], { show: when("compress", true) }),
+    T("bwlimit", "Limit bandwidth", { ph: "5000", help: "In KiB/s, or add a unit like 5m. Leave empty for no limit." }),
+    S("timeout", "Give up if idle for", [["", "Never (default)"], ["30", "30 seconds"], ["60", "1 minute"], ["300", "5 minutes"]]),
+    T("password", "Password file (daemon)", { ph: "/etc/rsyncd.pass", show: when("transport", "daemon") }),
+    S("ipv", "IP version", [["", "Either"], ["4", "IPv4 only (-4)"], ["6", "IPv6 only (-6)"]])
+  ]),
+
+  sec("Output and safety", null, [
+    C("dry", "Dry run: change nothing (-n)", { help: "Lists what would happen. Always do this first when deleting." }),
+    S("verbosity", "How much to print", [["", "Quiet (default)"], ["v", "Each file (-v)"], ["vv", "Extra detail (-vv)"], ["q", "Only errors (-q)"]]),
+    C("itemize", "Explain why each file is transferred (-i)"),
+    C("progress", "Show progress per file"),
+    C("info", "Show overall progress", { help: "A single line with totals (--info=progress2)." }),
+    C("stats", "Print a summary at the end"),
+    C("humanReadable", "Show sizes like 1.5M (-h)"),
+    T("logFile", "Write a log file", { ph: "rsync.log" }),
+    C("size", "Show file sizes in the listing", { show: when("listOnly", true) }),
+    C("listOnly", "Only list files, don't copy"),
+    C("noMotd", "Hide the server's message of the day", { show: when("transport", "daemon") }),
+    C("noImplicitDirs", "Don't create missing parent folders on the destination", { help: "Only matters with --relative." }),
+    C("relative", "Keep the full source path (-R)", { help: "Recreates the folder structure of each source path under the destination." }),
+    T("tempDir", "Temp folder", { ph: "/tmp/rsync", help: "Where partially transferred files are built." })
+  ])
+];
+
+var PRESETS = {
+  "Simple backup, preview first": { src: "/home/me/documents/", dest: "/mnt/backup/documents/", dry: true, verbosity: "v", humanReadable: true },
+  "Exact mirror": { src: "/home/me/photos/", dest: "/mnt/backup/photos/", goal: "mirror", dry: true, verbosity: "v", humanReadable: true },
+  "Backup to a server over SSH": { src: "/home/me/projects/", dest: "user@server:/backups/projects/", compress: true, partialProgress: true, info: true, humanReadable: true },
+  "Server mirror on a custom port": { src: "/var/www/site/", dest: "user@server:/var/www/site/", transport: "ssh", sshPort: "2222", delete: "delete", compress: true, stats: true },
+  "Backup with old versions kept": { src: "/home/me/documents/", dest: "/mnt/backup/current/", backup: true, backupDir: "../old-versions", backupSuffix: "-old" },
+  "Copy a project, skip junk": { src: "~/code/app/", dest: "/mnt/usb/app/", exclude: ".git/\nnode_modules/\n*.log\n*.tmp", verbosity: "v" },
+  "Move files (delete after copying)": { src: "/downloads/done/", dest: "/mnt/nas/done/", removeSource: true, partialProgress: true },
+  "Copy to a FAT/exFAT drive": { src: "/home/me/music/", dest: "/media/usb/music/", mode: "r", modWindow: true, noOwner: true, verbosity: "v" },
+  "Copy only photos": { src: "/home/me/pictures/", dest: "/mnt/backup/pictures/", include: "*.jpg\n*.jpeg\n*.png", onlyInclude: true, verbosity: "v" },
+  "Resume a big transfer": { src: "/data/big/", dest: "user@server:/data/big/", partialProgress: true, info: true, humanReadable: true },
+  "Throttled to be nice": { src: "/data/", dest: "user@server:/data/", bwlimit: "2000", compress: true, info: true },
+  "Check what differs by checksum": { src: "/data/a/", dest: "/data/b/", update: "checksum", dry: true, itemize: true }
+};
+
+function build(s) {
+  var b = Builder(s);
+  function trim(v) { return (v || "").trim(); }
+
+  // Goal presets quietly apply a few switches the person didn't tick, so we read effective values here.
+  var del = s.delete, removeSrc = s.removeSource, dry = s.dry, backup = s.backup, partialProgress = s.partialProgress;
+  if (s.goal === "mirror" && !del) del = "delete";
+  if (s.goal === "move") removeSrc = true;
+  if (s.goal === "compare") dry = true;
+  if (s.goal === "backup") backup = true;
+
+  var useP = partialProgress;
+  var verbose = s.verbosity;
+
+  // archive level
+  if (s.mode === "a") b.flag("-a", "--archive", "Archive mode: recurse and keep permissions, times, symlinks, owner and group");
+  else if (s.mode === "r") b.flag("-r", "--recursive", "Copy folders and everything inside them");
+  else b.add("Plain mode: copy only the files you name", []);
+  if (s.mode === "none") b.g.pop();
+
+  if (verbose === "v") b.flag("-v", "--verbose", "List each file as it is copied");
+  if (verbose === "vv") b.add("Show extra detail", ["-vv"]);
+  if (verbose === "q") b.flag("-q", "--quiet", "Only print errors");
+  if (s.humanReadable) b.flag("-h", "--human-readable", "Show sizes in readable units (K, M, G)");
+  if (dry) b.flag("-n", "--dry-run", "Preview only: show what would happen without changing anything");
+  if (s.compress) b.flag("-z", "--compress", "Compress data while sending");
+  if (s.compress && s.compressLevel) b.eq("compress-level", s.compressLevel, "Compression level " + s.compressLevel);
+  if (s.hardlinks) b.flag("-H", "--hard-links", "Keep hard links between files");
+  if (s.acls) b.flag("-A", "--acls", "Keep access control lists");
+  if (s.xattrs) b.flag("-X", "--xattrs", "Keep extended attributes");
+  if (s.sparse) b.flag("-S", "--sparse", "Store empty stretches of sparse files efficiently");
+  if (s.copyLinks) b.flag("-L", "--copy-links", "Copy the files that symlinks point to, not the links");
+  if (s.safeLinks) b.opt("safe-links", "Skip symlinks that point outside the copied tree");
+  if (s.mode === "a" && s.noOwner) { b.opt("no-owner", "Don't preserve the owner"); b.opt("no-group", "Don't preserve the group"); }
+  if (s.mode === "a" && s.noPerms) b.opt("no-perms", "Don't preserve permissions");
+  if (s.mode === "a" && s.noTimes) b.opt("no-times", "Don't preserve modification times");
+  if (s.chmodSet && trim(s.chmod)) b.eq("chmod", trim(s.chmod), "Set permissions on copied files");
+  if (s.relative) b.flag("-R", "--relative", "Keep the full source path under the destination");
+  if (s.relative && s.noImplicitDirs) b.opt("no-implied-dirs", "Don't create the parent folders of the path");
+  if (s.oneFs) b.flag("-x", "--one-file-system", "Don't cross into other mounted filesystems");
+  if (s.cvs) b.flag("-C", "--cvs-exclude", "Skip version-control and build leftovers like .git, *~ and *.o");
+
+  // updating
+  if (s.update === "u") b.flag("-u", "--update", "Skip files that are newer on the destination");
+  if (s.update === "checksum") b.flag("-c", "--checksum", "Decide by file contents rather than size and time");
+  if (s.update === "sizeonly") b.opt("size-only", "Skip files with the same size, ignoring times");
+  if (s.update === "ignoreExisting") b.opt("ignore-existing", "Never update files that already exist");
+  if (s.update === "existing") b.opt("existing", "Only update files that already exist, don't create new ones");
+  if (s.inplace) b.opt("inplace", "Write directly into existing files");
+  if (s.append) b.opt("append", "Add new data to the end of files that grew");
+  if (s.whole) b.flag("-W", "--whole-file", "Copy whole files instead of only the changed parts");
+  if (s.modWindow) b.eq("modify-window", "2", "Treat times within 2 seconds as equal");
+  if (useP) b.add("Keep partly transferred files and show progress", [s.syntax === "long" ? "--partial" : "-P"].concat(s.syntax === "long" ? [] : []));
+  if (useP && s.syntax === "long") b.opt("progress", "Show progress for each file");
+  if (s.partial && !useP) b.opt("partial", "Keep partly transferred files so a retry can resume");
+  if (s.maxSize) b.eq("max-size", s.maxSize, "Skip files bigger than " + s.maxSize);
+  if (s.minSize) b.eq("min-size", s.minSize, "Skip files smaller than " + s.minSize);
+
+  // deleting and backups
+  if (del === "delete") b.opt("delete", "Delete files from the destination that aren't in the source");
+  if (del === "before") b.opt("delete-before", "Delete extras first, then copy");
+  if (del === "after") b.opt("delete-after", "Copy first, then delete extras");
+  if (del === "excluded") { b.opt("delete", "Delete files from the destination that aren't in the source"); b.opt("delete-excluded", "Also delete files that match your exclude patterns"); }
+  if (del && s.maxDeleteOn) b.eq("max-delete", s.maxDelete, "Abort if more than " + s.maxDelete + " files would be deleted");
+  if (del && s.ignoreErrors) b.opt("ignore-errors", "Delete even if some files couldn't be read");
+  if (s.force) b.opt("force", "Allow deleting a non-empty folder that's in the way");
+  if (removeSrc) b.opt("remove-source-files", "Delete each source file after it's copied");
+  if (backup) {
+    b.flag("-b", "--backup", "Keep a copy of files that get replaced or deleted");
+    if (trim(s.backupDir)) b.eq("backup-dir", trim(s.backupDir), "Put the old versions in this folder");
+    if (trim(s.backupSuffix)) b.eq("suffix", trim(s.backupSuffix), "Add this ending to old versions");
+  }
+
+  // filters
+  lines(s.exclude).forEach(function (p) { b.eq("exclude", p, "Skip anything matching \"" + p + "\""); });
+  lines(s.include).forEach(function (p) { b.eq("include", p, "Keep anything matching \"" + p + "\""); });
+  if (s.onlyInclude) {
+    if (lines(s.include).length) { b.eq("include", "*/", "Still look inside folders"); }
+    b.eq("exclude", "*", "Skip everything not matched above");
+    if (!lines(s.include).length) b.warn("\"Exclude everything else\" with no includes would copy nothing.");
+  }
+  if (trim(s.excludeFrom)) b.eq("exclude-from", trim(s.excludeFrom), "Read exclude patterns from this file");
+  if (trim(s.includeFrom)) b.eq("include-from", trim(s.includeFrom), "Read include patterns from this file");
+  if (trim(s.filesFrom)) b.eq("files-from", trim(s.filesFrom), "Copy only the files listed in this file");
+
+  // network
+  var rsh = "";
+  if (s.transport === "ssh") {
+    var parts = ["ssh"];
+    if (trim(s.sshPort)) parts.push("-p " + trim(s.sshPort));
+    if (trim(s.sshKey)) parts.push("-i " + trim(s.sshKey));
+    if (trim(s.sshUser)) parts.push(trim(s.sshUser));
+    if (parts.length > 1) rsh = parts.join(" ");
+    else rsh = "ssh";
+    b.val("-e", "--rsh", rsh, "Connect with this ssh command");
+    if (/ -[pi] /.test(" " + rsh + " ") === false && parts.length === 1) b.warn("No SSH options entered; plain ssh is already the default for user@host: paths.");
+  }
+  if (trim(s.rsyncPath)) b.eq("rsync-path", trim(s.rsyncPath), "Start rsync on the remote side with this command");
+  else if (trim(s.remoteRsync)) b.eq("rsync-path", trim(s.remoteRsync), "Use this rsync program on the remote side");
+  if (trim(s.bwlimit)) b.eq("bwlimit", trim(s.bwlimit), "Limit speed to " + trim(s.bwlimit) + " (KiB/s unless a unit is given)");
+  if (s.timeout) b.eq("timeout", s.timeout, "Give up if nothing happens for " + s.timeout + "s");
+  if (s.transport === "daemon" && trim(s.password)) b.eq("password-file", trim(s.password), "Read the daemon password from this file");
+  if (s.transport === "daemon" && s.noMotd) b.opt("no-motd", "Hide the server's welcome message");
+  if (s.ipv === "4") b.flag("-4", "--ipv4", "Use IPv4 only");
+  if (s.ipv === "6") b.flag("-6", "--ipv6", "Use IPv6 only");
+
+  // output
+  if (s.itemize) b.flag("-i", "--itemize-changes", "Print a short code explaining each change");
+  if (s.progress && !useP) b.opt("progress", "Show progress for each file");
+  if (s.info) b.add("Show one overall progress line", ["--info=progress2"]);
+  if (s.stats) b.opt("stats", "Print totals when done");
+  if (trim(s.logFile)) b.eq("log-file", trim(s.logFile), "Also write a log to this file");
+  if (trim(s.tempDir)) b.eq("temp-dir", trim(s.tempDir), "Build partial files in this folder");
+  if (s.listOnly) {
+    b.opt("list-only", "Only list files, don't copy anything");
+    if (s.size) b.flag("-h", "--human-readable", "Show readable sizes");
+  }
+
+  // paths
+  var srcs = lines(s.src), dst = trim(s.dest);
+  srcs.forEach(function (p) { b.add("Copy from here", [p]); });
+  if (dst) b.add("Copy to here", [dst]);
+  if (!srcs.length) b.warn("Enter at least one source.");
+  if (!dst && !s.listOnly) b.warn("Enter a destination.");
+  srcs.forEach(function (p) {
+    if (/^~/.test(p) === false && p.length > 1 && p.charAt(p.length - 1) !== "/" && !/^[^/]*:[^/]/.test(p) && s.mode !== "none" && srcs.length === 1 && !/\.[A-Za-z0-9]+$/.test(p))
+      b.warn("\"" + p + "\" has no trailing slash, so rsync copies the folder itself into the destination (creating " + p.split("/").pop() + " inside it). Add a / to copy only its contents.");
+  });
+  var remoteCount = srcs.concat(dst ? [dst] : []).filter(function (p) { return /^([A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+:/.test(p) && !/^[A-Za-z]:[\\/]/.test(p) || /^rsync:\/\//.test(p); }).length;
+  if (remoteCount > 1 && dst && srcs.length) b.warn("Both sides look remote. Rsync can only copy where one side is on this computer.");
+
+  if (del) b.warn("Deleting makes the destination match the source exactly. A wrong or empty source path can wipe the destination. Do a dry run first.");
+  if (removeSrc) b.warn("Source files are deleted after they copy. Dry-run first and make sure the destination is what you expect.");
+  if (s.update === "checksum") b.warn("Checksums read every file on both sides, so large folders take a long time.");
+  if (s.inplace && !s.partial && !useP) b.warn("In-place updates can leave a damaged file if the transfer is interrupted.");
+  if (s.append && s.update === "checksum") b.warn("--append and --checksum don't combine well.");
+  if (s.compress) b.warn("Compression slows fast networks and doesn't help already-compressed files like JPEG, MP4 and ZIP.");
+  if (s.mode === "r" && (s.noOwner || s.noPerms || s.noTimes)) { /* hidden when not archive */ }
+  return { groups: b.g, warnings: b.w };
+}
+
+
+// ---- UI ------------------------------------------------------------------
+if (typeof document !== "undefined") {
+  var $ = function (id) { return document.getElementById(id); };
+  var rows = {}, sets = [];
+
+  function make(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function render() {
+    var host = $("form");
+    SECTIONS.forEach(function (sc) {
+      var fs = make("fieldset");
+      fs.appendChild(make("legend", "", sc.title));
+      sc.fields.forEach(function (f) {
+        var row = make("div", "row");
+        var lblWrap = make("div", "lbl");
+        var lbl = make("label", "", f.label); lbl.htmlFor = f.id; lblWrap.appendChild(lbl);
+        var cell = make("div");
+        var inp;
+        if (f.type === "select") {
+          inp = make("select");
+          f.opts.forEach(function (o) { inp.appendChild(new Option(o[1], o[0])); });
+        } else if (f.type === "check") {
+          inp = make("input"); inp.type = "checkbox";
+        } else if (f.type === "area") {
+          inp = make("textarea"); inp.rows = 4; inp.spellcheck = false;
+        } else {
+          inp = make("input"); inp.type = "text"; inp.autocomplete = "off"; inp.spellcheck = false;
+        }
+        inp.id = f.id;
+        if (f.ph) inp.placeholder = f.ph;
+        cell.appendChild(inp);
+        if (f.help) cell.appendChild(make("div", "help", f.help));
+        row.appendChild(lblWrap); row.appendChild(cell);
+        fs.appendChild(row);
+        rows[f.id] = row;
+      });
+      host.appendChild(fs);
+      sets.push({ el: fs, sec: sc });
+    });
+    var ps = $("preset");
+    Object.keys(PRESETS).forEach(function (k) { ps.appendChild(new Option(k, k)); });
+  }
+
+  function readState() {
+    var s = defaults();
+    allFields().forEach(function (f) {
+      var e = $(f.id);
+      s[f.id] = f.type === "check" ? e.checked : e.value;
+    });
+    s.syntax = $("syntax").value;
+    s.shell = $("shell").value;
+    return s;
+  }
+  function setField(id, v) {
+    var e = $(id); if (!e) return;
+    if (e.type === "checkbox") e.checked = !!v; else e.value = v;
+  }
+  function resetAll() {
+    var d = defaults();
+    allFields().forEach(function (f) { setField(f.id, d[f.id]); });
+  }
+
+  var lastText = "", lastGroups = [], lastMerge = true;
+  function update() {
+    var s = readState();
+    allFields().forEach(function (f) { rows[f.id].hidden = !visible(f, s); });
+    sets.forEach(function (x) {
+      x.el.hidden = !x.sec.fields.some(function (f) { return !rows[f.id].hidden; });
+    });
+    var r = build(s);
+    lastGroups = r.groups;
+    lastMerge = s.syntax === "short";
+    lastText = formatCommand(r.groups, s.shell, $("multiline").checked, lastMerge);
+    $("out").textContent = lastText;
+
+    var tbl = $("exp"); tbl.textContent = "";
+    var head = make("tr");
+    var c1 = make("td"); c1.appendChild(make("code", "", APP.cmd));
+    head.appendChild(c1); head.appendChild(make("td", "", APP.run));
+    tbl.appendChild(head);
+    r.groups.forEach(function (g) {
+      var tr = make("tr"), a = make("td"), b = make("td", "", g.d);
+      a.appendChild(make("code", "", tokensText(g, s.shell)));
+      tr.appendChild(a); tr.appendChild(b); tbl.appendChild(tr);
+    });
+
+    var warns = r.warnings.concat(shellWarnings(r.groups, s.shell, s));
+    var w = $("warns"); w.textContent = "";
+    if (warns.length) {
+      w.hidden = false;
+      var ul = make("ul");
+      warns.forEach(function (t) { ul.appendChild(make("li", "", t)); });
+      w.appendChild(ul);
+    } else w.hidden = true;
+  }
+
+  render();
+  resetAll();
+  document.addEventListener("input", update);
+  document.addEventListener("change", update);
+
+  $("preset").addEventListener("change", function () {
+    var p = PRESETS[$("preset").value];
+    if (!p) return;
+    resetAll();
+    Object.keys(p).forEach(function (k) { setField(k, p[k]); });
+    $("preset").value = "";
+    update();
+  });
+  $("reset").addEventListener("click", function () { resetAll(); update(); });
+
+  $("copy").addEventListener("click", function () {
+    var done = function () {
+      var b = $("copy"); b.textContent = "Copied!";
+      setTimeout(function () { b.textContent = "Copy command"; }, 1500);
+    };
+    var fallback = function () {
+      var t = document.createElement("textarea");
+      t.value = lastText; t.style.position = "fixed"; t.style.opacity = "0";
+      document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); done(); } catch (e) {}
+      document.body.removeChild(t);
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(lastText).then(done, fallback);
+    else fallback();
+  });
+
+  $("save").addEventListener("click", function () {
+    var shell = $("shell").value;
+    var ext = shell === "posix" ? "sh" : (shell === "ps" ? "ps1" : "bat");
+    var head = shell === "posix" ? "#!/usr/bin/env bash\n" : (shell === "cmd" ? "@echo off\n" : "");
+    var blob = new Blob([head + formatCommand(lastGroups, shell, true, lastMerge) + "\n"], { type: "text/plain" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = APP.file + "." + ext;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  });
+
+  update();
+}
+
+if (typeof module !== "undefined") module.exports = {
+  APP: APP, build: build, formatCommand: formatCommand, defaults: defaults, shellWarnings: shellWarnings,
+  PRESETS: PRESETS, SECTIONS: SECTIONS, quote: quote, allFields: allFields, visible: visible, splitArgs: splitArgs
+};
+
+</script>
+</body>
+</html>
