@@ -28,3 +28,5 @@ Rsync is a Unix tool. On Windows it needs WSL, Git Bash or cwRsync to run the co
 Less common options (daemon configuration, batch files, fuzzy matching, finer filter rules) are left out. See `man rsync` for those.
 
 Just open `RsyncRepository.html` in any browser. It works with no internet connection.
+
+<img width="761" height="958" alt="rsync" src="https://github.com/user-attachments/assets/f46cbbc4-0ba0-40a4-9d5c-29515d70c344" />
